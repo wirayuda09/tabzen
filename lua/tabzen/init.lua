@@ -261,7 +261,7 @@ function M.close_buffer(bufnr)
 
     local buffers = get_listed_buffers()
 
-    if #buffers <= 1 then
+    if #buffers < 1 then
         return
     end
 
