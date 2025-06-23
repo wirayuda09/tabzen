@@ -42,7 +42,7 @@ function M.render_tab(bufnr, is_current, tab_num)
     content = content .. " "
 
     -- Apply highlighting based on current state
-    local hl_group = is_current and "TabLineSel" or "TabLine"
+    local hl_group = is_current and "TabZenActive" or "TabZenInactive"
 
     return {
         content = content,
@@ -67,7 +67,7 @@ function M.build_tabline()
         local tab = M.render_tab(bufnr, is_current, i)
 
         -- Use proper tabline syntax for clickable tabs
-        local hl_start = is_current and "%#TabLineSel#" or "%#TabLine#"
+        local hl_start = is_current and "%#TabZenActive#" or "%#TabZenInactive#"
         local clickable = string.format("%%%d@TabzenClick@", bufnr)
         local tab_content = hl_start .. clickable .. tab.content .. "%T"
 

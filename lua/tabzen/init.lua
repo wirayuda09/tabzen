@@ -57,9 +57,9 @@ local function setup_highlights()
 
     -- Define subtle highlight groups
     vim.api.nvim_set_hl(0, "TabZenActive", {
-        fg = tabline_fg,
+        fg = "#ffffff", -- bright white for visibility
         bg = active_bg,
-        bold = false,
+        bold = true,
         default = false
     })
 
