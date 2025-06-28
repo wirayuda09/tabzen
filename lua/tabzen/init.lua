@@ -4,11 +4,12 @@ local M = {}
 local config = {
     max_tab_width = 15,
     show_tab_numbers = false,
-    show_close_button = false,
+    show_close_button = true,
     show_modified_indicator = false,
     separator = " │ ",
     modified_icon = "●",
     close_icon = "×",
+    debug_clicks = false,
     keymaps = {
         next_tab = "<Tab>",
         prev_tab = "<S-Tab>",
@@ -20,18 +21,14 @@ local config = {
 -- Helper function to brighten a color
 local function brighten_color(color, amount)
     if not color or color == "" then
-        return "#3a3a3a" -- fallback
+        return "#3a3a3a"
     end
 
-    -- Remove # if present
     color = color:gsub("#", "")
-
-    -- Convert to RGB
     local r = tonumber(color:sub(1, 2), 16) or 0
     local g = tonumber(color:sub(3, 4), 16) or 0
     local b = tonumber(color:sub(5, 6), 16) or 0
 
-    -- Brighten each component
     r = math.min(255, r + amount)
     g = math.min(255, g + amount)
     b = math.min(255, b + amount)
@@ -41,23 +38,19 @@ end
 
 -- Set up subtle highlight groups with brighter backgrounds
 local function setup_highlights()
-    -- Get current background colors for better integration
     local normal_bg = vim.fn.synIDattr(vim.fn.hlID("Normal"), "bg")
     local tabline_bg = vim.fn.synIDattr(vim.fn.hlID("TabLine"), "bg")
     local tabline_fg = vim.fn.synIDattr(vim.fn.hlID("TabLine"), "fg")
 
-    -- Fallback colors if theme doesn't define them
     if normal_bg == "" then normal_bg = "#1e1e1e" end
     if tabline_bg == "" then tabline_bg = "#2d2d2d" end
     if tabline_fg == "" then tabline_fg = "#c0c0c0" end
 
-    -- Create brighter background for active tab
-    local active_bg = brighten_color(tabline_bg, 25)          -- Brighten by 25
-    local active_modified_bg = brighten_color(tabline_bg, 20) -- Slightly less bright for modified
+    local active_bg = brighten_color(tabline_bg, 25)
+    local active_modified_bg = brighten_color(tabline_bg, 20)
 
-    -- Define subtle highlight groups
     vim.api.nvim_set_hl(0, "TabZenActive", {
-        fg = "#ffffff", -- bright white for visibility
+        fg = "#ffffff",
         bg = active_bg,
         bold = true,
         default = false
@@ -92,6 +85,13 @@ local function setup_highlights()
     vim.api.nvim_set_hl(0, "TabZenFill", {
         fg = "NONE",
         bg = tabline_bg,
+        default = false
+    })
+
+    vim.api.nvim_set_hl(0, "TabZenCloseButton", {
+        fg = "#ff6b6b",
+        bg = "NONE",
+        bold = true,
         default = false
     })
 end
@@ -134,29 +134,17 @@ local function truncate_string(str, max_width)
     return str:sub(1, max_width - 1) .. "…"
 end
 
--- Tab rendering with subtle highlighting
+-- Tab rendering with close button support
 local function render_tab(bufnr, is_current, tab_num)
     local name = get_buffer_name(bufnr)
     local modified = vim.api.nvim_buf_get_option(bufnr, "modified")
 
     local content = " "
-
-    -- Tab number display removed
-    -- if config.show_tab_numbers then
-    --     content = content .. tab_num .. ":"
-    -- end
-
     content = content .. truncate_string(name, config.max_tab_width)
 
     if modified and config.show_modified_indicator then
         content = content .. config.modified_icon
     end
-
-    if config.show_close_button then
-        content = content .. " " .. config.close_icon
-    end
-
-    content = content .. " "
 
     -- Choose highlight group based on active state and modified status
     local hl_group
@@ -166,7 +154,18 @@ local function render_tab(bufnr, is_current, tab_num)
         hl_group = modified and "TabZenInactiveModified" or "TabZenInactive"
     end
 
-    return string.format("%%#%s#%%%d@TabzenClick@%s%%T", hl_group, bufnr, content)
+    -- Use v:lua to call the function properly
+    local tab_content = string.format("%%#%s#%%%d@v:lua.TabzenBufferClick@%s", hl_group, bufnr, content)
+
+    -- Add close button with separate click handler
+    if config.show_close_button then
+        local close_content = string.format("%%#TabZenCloseButton#%%%d@v:lua.TabzenCloseClick@ %s %%T", bufnr, config.close_icon)
+        tab_content = tab_content .. close_content
+    else
+        tab_content = tab_content .. " %%T"
+    end
+
+    return tab_content
 end
 
 -- Main tabline function
@@ -186,37 +185,64 @@ function M.tabline()
         table.insert(tabs, tab)
     end
 
-    -- Join tabs with separator
     local separator = "%#TabZenSeparator#" .. config.separator
     local result = table.concat(tabs, separator)
-
-    -- Fill the rest of the line
     result = result .. "%#TabZenFill#%="
 
     return result
 end
 
--- Click handler
+-- Click handler for tab (not close button)
 function M.handle_click(bufnr, clicks, button)
-    bufnr = tonumber(bufnr) or 0
+    bufnr = tonumber(bufnr)
+    
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        if config.debug_clicks then
+            print("TabzenClick: Invalid buffer " .. (bufnr or "nil"))
+        end
+        return
+    end
 
-    if button == "l" then
+    if config.debug_clicks then
+        print("TabzenClick: bufnr=" .. bufnr .. ", clicks=" .. clicks .. ", button='" .. button .. "'")
+    end
+
+    -- Handle left click
+    if button == "l" or button == "1" then
         if clicks == 1 then
             vim.schedule(function()
                 if vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_set_current_buf(bufnr)
                 end
             end)
-        elseif clicks == 2 then
-            vim.schedule(function()
-                M.close_buffer(bufnr)
-            end)
         end
-    elseif button == "m" then -- middle click
+    -- Handle middle click - close tab
+    elseif button == "m" or button == "2" then
         vim.schedule(function()
             M.close_buffer(bufnr)
         end)
     end
+end
+
+-- Close button click handler
+function M.handle_close_click(bufnr, clicks, button)
+    bufnr = tonumber(bufnr)
+    
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        if config.debug_clicks then
+            print("TabzenCloseClick: Invalid buffer " .. (bufnr or "nil"))
+        end
+        return
+    end
+
+    if config.debug_clicks then
+        print("TabzenCloseClick: bufnr=" .. bufnr .. ", clicks=" .. clicks .. ", button='" .. button .. "'")
+    end
+
+    -- Any click on close button should close the tab
+    vim.schedule(function()
+        M.close_buffer(bufnr)
+    end)
 end
 
 -- Navigation functions
@@ -262,11 +288,14 @@ function M.close_buffer(bufnr)
 
     local buffers = get_listed_buffers()
 
-    if #buffers < 1 then
+    if #buffers <= 1 then
+        vim.cmd("enew")
+        if vim.api.nvim_buf_is_valid(bufnr) and bufnr ~= vim.api.nvim_get_current_buf() then
+            pcall(vim.api.nvim_buf_delete, bufnr, { force = false })
+        end
         return
     end
 
-    -- Find current buffer index
     local current_idx = nil
     for i, buf in ipairs(buffers) do
         if buf == bufnr then
@@ -275,7 +304,6 @@ function M.close_buffer(bufnr)
         end
     end
 
-    -- Switch to another buffer before closing
     if current_idx then
         local next_buf = buffers[current_idx + 1] or buffers[current_idx - 1]
         if next_buf and next_buf ~= bufnr then
@@ -283,7 +311,6 @@ function M.close_buffer(bufnr)
         end
     end
 
-    -- Close the buffer
     pcall(vim.api.nvim_buf_delete, bufnr, { force = false })
 end
 
@@ -291,33 +318,31 @@ function M.new_tab()
     vim.cmd("enew")
 end
 
--- Function to customize highlights
 function M.set_highlights(highlights)
     for group, opts in pairs(highlights) do
         vim.api.nvim_set_hl(0, group, opts)
     end
 end
 
--- Setup function
+-- Setup function with proper initialization order
 function M.setup(opts)
-    -- Merge user config
     if opts then
         config = vim.tbl_deep_extend("force", config, opts)
     end
 
-    -- Set up highlights
-    setup_highlights()
+    -- FIRST: Register the global click handler functions
+    _G.TabzenBufferClick = M.handle_click
+    _G.TabzenCloseClick = M.handle_close_click
 
-    -- Allow user to override highlights
+    -- SECOND: Set up highlights
+    setup_highlights()
     if opts and opts.highlights then
         M.set_highlights(opts.highlights)
     end
 
-    -- Set up tabline
+    -- THIRD: Set up tabline (after functions are registered)
     vim.o.showtabline = 2
     vim.o.tabline = "%!v:lua.require('tabzen').tabline()"
-
-    -- Set up global click handler
 
     -- Set up keymaps
     local keymap_opts = { silent = true, noremap = true }
@@ -327,7 +352,6 @@ function M.setup(opts)
     vim.keymap.set("n", config.keymaps.close_tab, M.close_buffer, keymap_opts)
     vim.keymap.set("n", config.keymaps.new_tab, M.new_tab, keymap_opts)
 
-    -- Number keymaps for quick switching
     for i = 1, 9 do
         vim.keymap.set("n", "<leader>" .. i, function()
             M.goto_tab(i)
@@ -348,7 +372,6 @@ function M.setup(opts)
         end,
     })
 
-    -- Update highlights when colorscheme changes
     vim.api.nvim_create_autocmd("ColorScheme", {
         group = group,
         callback = function()
