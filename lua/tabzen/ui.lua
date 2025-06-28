@@ -20,10 +20,10 @@ function M.render_tab(bufnr, is_current, tab_num)
     -- Add padding
     content = content .. " "
 
-    -- Tab number
-    if opts.show_tab_numbers then
-        content = content .. tab_num .. ":"
-    end
+    -- Tab number display removed
+    -- if opts.show_tab_numbers then
+    --     content = content .. tab_num .. ":"
+    -- end
 
     -- Buffer name
     content = content .. utils.truncate_string(name, opts.max_tab_width)

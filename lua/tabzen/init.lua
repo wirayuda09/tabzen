@@ -2,10 +2,10 @@ local M = {}
 
 -- Configuration
 local config = {
-    max_tab_width = 20,
-    show_tab_numbers = true,
-    show_close_button = true,
-    show_modified_indicator = true,
+    max_tab_width = 15,
+    show_tab_numbers = false,
+    show_close_button = false,
+    show_modified_indicator = false,
     separator = " │ ",
     modified_icon = "●",
     close_icon = "×",
@@ -141,9 +141,10 @@ local function render_tab(bufnr, is_current, tab_num)
 
     local content = " "
 
-    if config.show_tab_numbers then
-        content = content .. tab_num .. ":"
-    end
+    -- Tab number display removed
+    -- if config.show_tab_numbers then
+    --     content = content .. tab_num .. ":"
+    -- end
 
     content = content .. truncate_string(name, config.max_tab_width)
 
@@ -317,7 +318,6 @@ function M.setup(opts)
     vim.o.tabline = "%!v:lua.require('tabzen').tabline()"
 
     -- Set up global click handler
-    _G.TabzenClick = M.handle_click
 
     -- Set up keymaps
     local keymap_opts = { silent = true, noremap = true }
